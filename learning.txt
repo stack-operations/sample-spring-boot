@@ -1,0 +1,91 @@
+ aws iam create-role --role-name CodeDeployServiceRole --assume-role-policy-document file://CodeDeploy-Demo-Trust.json
+
+ aws iam attach-role-policy --role-name CodeDeployServiceRole --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+
+ aws iam get-role --role-name CodeDeployServiceRole --query "Role.Arn" --output text
+
+
+
+Ec2 verion: 20.04
+To install the latest version of the CodeDeploy agent on Ubuntu 20.04:
+
+Install codedeployagent on ec2
+
+ sudo apt update
+ sudo apt install ruby-full -y
+ sudo apt install wget
+
+ cd installation
+ wget https://aws-codedeploy-us-west-2.s3.us-west-2.amazonaws.com/latest/install
+ chmod +x ./install
+ sudo ./install auto > /tmp/logfile
+ sudo service codedeploy-agent status
+
+ git clone https://github.com/stack-operations/config-service.git /tmp/config-service
+
+
+chmod +x /tmp/config-service/scripts/*
+
+aws s3 mb s3://sumit-codedeploydemobucket --region=us-west-2
+
+
+Attach below policy to s3 bucket:
+{
+    "Version": "2008-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::259922901704:role/CodeDeployDemo-EC2-Instance-Profile"
+            },
+            "Action": [
+                "s3:Get*",
+                "s3:List*"
+            ],
+            "Resource": "arn:aws:s3:::sumit-codedeploydemobucket/*"
+        }
+    ]
+}
+
+
+
+aws deploy create-application --application-name config_service_app
+{
+    "applicationId": "89ba54cd-e3cf-47e5-a6bd-5bbfdfa6d185"
+}
+
+aws deploy push \
+  --application-name config_service_app \
+  --s3-location s3://sumit-codedeploydemobucket/config_service_app.zip \
+  --ignore-hidden-files
+
+
+ zip -r config_service_app.zip appspec.yml scripts/
+  aws s3 cp config_service_app.zip s3://sumit-codedeploydemobucket/
+
+  
+aws deploy create-deployment-group \
+>   --application-name config_service_app \
+>   --deployment-group-name config_service_app_DepGroup \
+>   --deployment-config-name CodeDeployDefault.OneAtATime \
+>   --ec2-tag-filters Key=Name,Value=CodeDeployDemo,Type=KEY_AND_VALUE \
+>   --service-role-arn arn:aws:iam::259922901704:role/CodeDeployServiceRole
+{
+    "deploymentGroupId": "4527fe51-f4c0-4b56-a1a3-c4c004ec3acf"
+}
+
+  Install codedeploy on ec2:
+
+  aws ssm create-association \
+  --name AWS-ConfigureAWSPackage \
+  --targets Key=tag:Name,Values=CodeDeployDemo \
+  --parameters action=Install,name=AWSCodeDeployAgent \
+  --schedule-expression "cron(0 2 ? * SUN *)" 
+
+
+
+aws deploy create-deployment \
+  --application-name config_service_app \
+  --deployment-config-name CodeDeployDefault.OneAtATime \
+  --deployment-group-name config_service_app_DepGroup \
+  --s3-location bucket=sumit-codedeploydemobucket,bundleType=zip,key=config_service_app.zip
